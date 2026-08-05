@@ -13,6 +13,423 @@ jobs:
       - name: Unzip project
         run: unzip -o WhitelistChecker_v11.zip
 
+      - name: Inject updated MainActivity.kt
+        run: |
+          cat << 'EOF' > WhitelistChecker/app/src/main/java/com/konstantin/whitelistchecker/MainActivity.kt
+          package com.konstantin.whitelistchecker
+
+          import android.net.ConnectivityManager
+          import android.net.Network
+          import android.net.NetworkCapabilities
+          import android.net.NetworkRequest
+          import android.net.TrafficStats
+          import android.os.Bundle
+          import android.os.Process
+          import android.widget.LinearLayout
+          import android.widget.ProgressBar
+          import android.widget.TextView
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.core.view.WindowCompat
+          import java.net.HttpURLConnection
+          import java.net.URL
+          import java.util.concurrent.ExecutorService
+          import java.util.concurrent.Executors
+
+          val WHITELIST_DOMAINS = listOf(
+              "max.ru",
+              "vk.ru",
+              "vkvideo.ru",
+              "yandex.ru",
+              "ozon.ru",
+              "sber.ru",
+              "tbank.ru",
+              "kremlin.ru",
+              "vtb.ru",
+              "dzen.ru"
+          )
+
+          val NON_WHITELIST_DOMAINS = listOf(
+              "tiktok.com",
+              "smoladmin.ru",
+              "transphoto.org",
+              "muttp.ru",
+              "microsoft.com",
+              "oppo.com",
+              "wikipedia.org",
+              "fandom.com",
+              "weather.com",
+              "twitch.tv"
+          )
+
+          const val DEV_SITE = "smolanin.ru"
+
+          data class CheckResult(val domain: String, val reachable: Boolean, val status: String)
+
+          class MainActivity : AppCompatActivity() {
+
+              private lateinit var statusBox: LinearLayout
+              private lateinit var statusWord: TextView
+              private lateinit var progressSpinner: ProgressBar
+              private lateinit var whitelistColumn: TextView
+              private lateinit var nonWhitelistColumn: TextView
+              private lateinit var devSiteText: TextView
+              private lateinit var trafficText: TextView
+              private lateinit var connectivityManager: ConnectivityManager
+              private val executor: ExecutorService = Executors.newFixedThreadPool(8)
+
+              private var cellularNetwork: Network? = null
+
+              private val COLOR_CHECKING = 0xFFB0B0B0.toInt()
+              private val COLOR_ON = 0xFFE53935.toInt()
+              private val COLOR_OFF = 0xFF43A047.toInt()
+              private val COLOR_NO_NETWORK = 0xFF000000.toInt()
+              private val COLOR_VPN = 0xFFFF9800.toInt()
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  WindowCompat.setDecorFitsSystemWindows(window, true)
+                  window.statusBarColor = 0xFF808080.toInt()
+
+                  Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
+                      runOnUiThread {
+                          android.widget.Toast.makeText(
+                              this,
+                              "Краш: ${throwable.javaClass.simpleName}: ${throwable.message}",
+                              android.widget.Toast.LENGTH_LONG
+                          ).show()
+                      }
+                      Thread.sleep(3000)
+                      android.os.Process.killProcess(android.os.Process.myPid())
+                  }
+
+                  statusBox = findViewById(R.id.statusBox)
+                  statusWord = findViewById(R.id.statusWord)
+                  progressSpinner = findViewById(R.id.progressSpinner)
+                  whitelistColumn = findViewById(R.id.whitelistColumn)
+                  nonWhitelistColumn = findViewById(R.id.nonWhitelistColumn)
+                  devSiteText = findViewById(R.id.devSiteText)
+                  trafficText = findViewById(R.id.trafficText)
+                  connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+
+                  statusBox.setOnClickListener {
+                      try {
+                          if (isVpnActive()) {
+                              setStatus(COLOR_VPN, "Выключи VPN")
+                              whitelistColumn.text = ""
+                              nonWhitelistColumn.text = ""
+                              devSiteText.text = ""
+                              trafficText.visibility = android.view.View.GONE
+                          } else {
+                              requestCellularAndRun()
+                          }
+                      } catch (e: Exception) {
+                          setStatus(COLOR_NO_NETWORK, "Ошибка: ${e.javaClass.simpleName}")
+                      }
+                  }
+              }
+
+              private fun setStatus(color: Int, word: String, showSpinner: Boolean = false) {
+                  statusBox.setBackgroundColor(color)
+                  statusWord.text = word
+                  progressSpinner.visibility = if (showSpinner) android.view.View.VISIBLE else android.view.View.GONE
+              }
+
+              private fun isVpnActive(): Boolean {
+                  connectivityManager.allNetworks.forEach { network ->
+                      val capabilities = connectivityManager.getNetworkCapabilities(network)
+                      if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true) {
+                          return true
+                      }
+                  }
+                  return false
+              }
+
+              private fun requestCellularAndRun() {
+                  setStatus(COLOR_CHECKING, "Проверка", showSpinner = true)
+                  whitelistColumn.text = ""
+                  nonWhitelistColumn.text = ""
+                  devSiteText.text = ""
+                  trafficText.visibility = android.view.View.GONE
+                  cellularNetwork = null
+
+                  val request = NetworkRequest.Builder()
+                      .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                      .build()
+
+                  val callback = object : ConnectivityManager.NetworkCallback() {
+                      override fun onAvailable(network: Network) {
+                          cellularNetwork = network
+                          runOnUiThread { runChecks(network) }
+                      }
+
+                      override fun onUnavailable() {
+                          runOnUiThread {
+                              setStatus(COLOR_NO_NETWORK, "Нет доступа к сети")
+                          }
+                      }
+                  }
+
+                  connectivityManager.requestNetwork(request, callback)
+
+                  android.os.Handler(mainLooper).postDelayed({
+                      if (cellularNetwork == null) {
+                          setStatus(COLOR_NO_NETWORK, "Нет доступа к сети")
+                      }
+                  }, 5000)
+              }
+
+              private fun runChecks(network: Network) {
+                  setStatus(COLOR_CHECKING, "Проверка", showSpinner = true)
+
+                  executor.submit {
+                      val uid = Process.myUid()
+                      val rxBefore = TrafficStats.getUidRxBytes(uid)
+                      val txBefore = TrafficStats.getUidTxBytes(uid)
+
+                      val whitelistResults = WHITELIST_DOMAINS.map { checkDomain(network, it) }
+                      val nonWhitelistResults = NON_WHITELIST_DOMAINS.map { checkDomain(network, it) }
+                      val devSiteResult = checkDomain(network, DEV_SITE)
+
+                      val rxAfter = TrafficStats.getUidRxBytes(uid)
+                      val txAfter = TrafficStats.getUidTxBytes(uid)
+
+                      val whitelistReachable = whitelistResults.count { it.reachable }
+                      val nonWhitelistReachable = nonWhitelistResults.count { it.reachable }
+
+                      val trafficBytes: Long? = if (rxBefore < 0 || txBefore < 0 || rxAfter < 0 || txAfter < 0) {
+                          null
+                      } else {
+                          (rxAfter - rxBefore) + (txAfter - txBefore)
+                      }
+
+                      runOnUiThread {
+                          applyVerdict(whitelistReachable, nonWhitelistReachable, whitelistResults, nonWhitelistResults, devSiteResult, trafficBytes)
+                      }
+                  }
+              }
+
+              private fun checkDomain(network: Network, domain: String): CheckResult {
+                  return try {
+                      val url = URL("https://$domain")
+                      val connection = network.openConnection(url) as HttpURLConnection
+                      connection.connectTimeout = 9000
+                      connection.readTimeout = 9000
+                      connection.instanceFollowRedirects = true
+                      connection.requestMethod = "HEAD"
+                      connection.responseCode
+                      connection.disconnect()
+                      CheckResult(domain, true, "ok")
+                  } catch (e: java.net.SocketException) {
+                      val isReset = e.message?.contains("reset", ignoreCase = true) == true
+                      CheckResult(domain, false, if (isReset) "reset" else "timeout")
+                  } catch (e: java.net.SocketTimeoutException) {
+                      CheckResult(domain, false, "timeout")
+                  } catch (e: Exception) {
+                      CheckResult(domain, false, "timeout")
+                  }
+              }
+
+              private fun applyVerdict(
+                  whitelistReachable: Int,
+                  nonWhitelistReachable: Int,
+                  whitelistResults: List<CheckResult>,
+                  nonWhitelistResults: List<CheckResult>,
+                  devSiteResult: CheckResult,
+                  trafficBytes: Long?
+              ) {
+                  val whitelistDetails = StringBuilder()
+                  whitelistDetails.append("($whitelistReachable из ${WHITELIST_DOMAINS.size})\n")
+                  whitelistResults.forEach { whitelistDetails.append("${statusLabel(it)} ${it.domain}\n") }
+                  whitelistColumn.text = whitelistDetails.toString()
+
+                  val nonWhitelistDetails = StringBuilder()
+                  nonWhitelistDetails.append("($nonWhitelistReachable из ${NON_WHITELIST_DOMAINS.size})\n")
+                  nonWhitelistResults.forEach { nonWhitelistDetails.append("${statusLabel(it)} ${it.domain}\n") }
+                  nonWhitelistColumn.text = nonWhitelistDetails.toString()
+
+                  val devStatusStr = if (devSiteResult.reachable) "доступен" else "недоступен"
+                  devSiteText.text = "Сайт разработчика\n$DEV_SITE \"$devStatusStr\""
+
+                  if (trafficBytes != null) {
+                      val kb = trafficBytes / 1024.0
+                      trafficText.text = if (kb < 1024) {
+                          "Потрачено трафика: ${"%.1f".format(kb)} КБ"
+                      } else {
+                          "Потрачено трафика: ${"%.2f".format(kb / 1024.0)} МБ"
+                      }
+                      trafficText.visibility = android.view.View.VISIBLE
+                  } else {
+                      trafficText.visibility = android.view.View.GONE
+                  }
+
+                  when {
+                      whitelistReachable == 0 && nonWhitelistReachable == 0 -> {
+                          setStatus(COLOR_NO_NETWORK, "Нет доступа к сети")
+                      }
+                      whitelistReachable > nonWhitelistReachable -> {
+                          setStatus(COLOR_ON, "Включены")
+                      }
+                      else -> {
+                          setStatus(COLOR_OFF, "Выключены")
+                      }
+                  }
+              }
+
+              private fun statusLabel(r: CheckResult): String = when (r.status) {
+                  "ok" -> "OK    "
+                  "reset" -> "RESET "
+                  else -> "--    "
+              }
+
+              override fun onDestroy() {
+                  super.onDestroy()
+                  executor.shutdown()
+              }
+          }
+          EOF
+
+      - name: Inject updated activity_main.xml
+        run: |
+          cat << 'EOF' > WhitelistChecker/app/src/main/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:fillViewport="true">
+
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:minHeight="match_parent"
+                  android:orientation="vertical"
+                  android:gravity="center"
+                  android:padding="24dp">
+
+                  <LinearLayout
+                      android:id="@+id/statusBox"
+                      android:layout_width="260dp"
+                      android:layout_height="140dp"
+                      android:orientation="vertical"
+                      android:gravity="center"
+                      android:layout_marginBottom="16dp"
+                      android:background="#B0B0B0"
+                      android:clickable="true"
+                      android:focusable="true">
+
+                      <TextView
+                          android:id="@+id/statusCaption"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:text="Белые списки:"
+                          android:textSize="16sp"
+                          android:textColor="#FFFFFF" />
+
+                      <TextView
+                          android:id="@+id/statusWord"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:layout_marginTop="8dp"
+                          android:text="Нажми, чтобы проверить"
+                          android:textSize="20sp"
+                          android:textStyle="bold"
+                          android:textColor="#FFFFFF"
+                          android:gravity="center" />
+
+                      <ProgressBar
+                          android:id="@+id/progressSpinner"
+                          style="?android:attr/progressBarStyleSmall"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:layout_marginTop="12dp"
+                          android:visibility="gone" />
+
+                  </LinearLayout>
+
+                  <TextView
+                      android:id="@+id/trafficText"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="8dp"
+                      android:padding="8dp"
+                      android:background="#EEEEEE"
+                      android:textSize="12sp"
+                      android:visibility="gone" />
+
+                  <LinearLayout
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:orientation="horizontal"
+                      android:layout_marginTop="16dp">
+
+                      <LinearLayout
+                          android:layout_width="0dp"
+                          android:layout_height="wrap_content"
+                          android:layout_weight="1"
+                          android:orientation="vertical"
+                          android:paddingEnd="4dp">
+
+                          <TextView
+                              android:id="@+id/whitelistHeader"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:text="Белый список доступно:"
+                              android:textSize="11sp"
+                              android:textStyle="bold" />
+
+                          <TextView
+                              android:id="@+id/whitelistColumn"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:layout_marginTop="4dp"
+                              android:textSize="11sp"
+                              android:fontFamily="monospace" />
+
+                      </LinearLayout>
+
+                      <LinearLayout
+                          android:layout_width="0dp"
+                          android:layout_height="wrap_content"
+                          android:layout_weight="1"
+                          android:orientation="vertical"
+                          android:paddingStart="4dp">
+
+                          <TextView
+                              android:id="@+id/nonWhitelistHeader"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:text="Вне списка доступно:"
+                              android:textSize="11sp"
+                              android:textStyle="bold" />
+
+                          <TextView
+                              android:id="@+id/nonWhitelistColumn"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:layout_marginTop="4dp"
+                              android:textSize="11sp"
+                              android:fontFamily="monospace" />
+
+                      </LinearLayout>
+
+                  </LinearLayout>
+
+                  <TextView
+                      android:id="@+id/devSiteText"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginTop="24dp"
+                      android:gravity="center"
+                      android:textSize="13sp"
+                      android:textStyle="bold"
+                      android:fontFamily="monospace" />
+
+              </LinearLayout>
+
+          </ScrollView>
+          EOF
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -23,9 +440,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.4
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Build debug APK
         working-directory: WhitelistChecker
@@ -36,3 +451,4 @@ jobs:
         with:
           name: whitelist-checker-debug
           path: WhitelistChecker/app/build/outputs/apk/debug/app-debug.apk
+        
