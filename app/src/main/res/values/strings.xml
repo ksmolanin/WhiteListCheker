@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WLchek</string>
+
+    <string name="notif_channel_name">Статус интернета</string>
+    <string name="notif_channel_description">Сообщения о смене режима белых списков</string>
+    <string name="notif_title">Whitelist Checker</string>
+    <string name="verdict_on">Интернет: только белый список</string>
+    <string name="verdict_off">Интернет: полный доступ</string>
+    <string name="verdict_unavailable">Интернет: недоступен</string>
+    <string name="verdict_unknown">Интернет: не удалось определить</string>
+
+    <string name="bypass_notif_channel">Обход (VPN)</string>
+    <string name="bypass_notif_title">Обход включён</string>
+    <string name="bypass_notif_connecting">Подключение…</string>
+    <string name="bypass_notif_connected">Подключено</string>
+    <string name="bypass_notif_stop">Отключить</string>
+    <string name="bypass_error_no_link">Не указана ссылка на конференцию</string>
+    <string name="bypass_error_timeout">Не удалось подключиться к каналу</string>
+    <string name="bypass_error_tun">Не удалось создать VPN-интерфейс</string>
+    <string name="bypass_error_revoked">VPN отключён системой</string>
+    <string name="bypass_error_permission">Нет разрешения на VPN</string>
+
+    <string name="bypass_node_notif_channel">Раздача (нода)</string>
+    <string name="bypass_node_notif_title">Нода OpenFlux</string>
+    <string name="bypass_node_notif_connecting">Запуск ноды…</string>
+    <string name="bypass_node_notif_running">Нода работает</string>
+    <string name="bypass_node_notif_stop">Остановить</string>
+    <string name="bypass_node_error_no_link">Не указана ссылка на конференцию</string>
+    <string name="bypass_node_error_stopped">Нода остановилась</string>
+</resources>

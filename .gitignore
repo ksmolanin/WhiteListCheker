@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Keystore и секреты — никогда в репозиторий
+*.keystore
+*.jks
+keystore.properties
+
+# Артефакты
+*.apk
+*.aab
+captures/

@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контроль Доступа - Белые Списки</title>
+    <script src="tailwindcss.js"></script>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden;
+        }
+        .status-button {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .status-button:active {
+            transform: scale(0.95);
+        }
+
+        .nav-button {
+            transition: color 0.25s ease-out, font-weight 0.25s ease-out;
+            color: #a3a3a3;
+        }
+        .nav-button:active {
+            transform: scale(0.90);
+        }
+        .nav-button.active {
+            color: #10b981;
+            font-weight: 600;
+        }
+
+        .bounce {
+            animation: bounceAnim 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes bounceAnim {
+            0% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-3px) scale(1.1); }
+            100% { transform: translateY(0) scale(1); }
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #262626; }
+        ::-webkit-scrollbar-thumb { background: #404040; border-radius: 3px; }
+
+        .main-list-container {
+            background-color: #2d2d2d;
+            font-family: monospace;
+        }
+        .list-col { max-height: 240px; overflow-y: auto; }
+        .list-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+            font-size: 13px;
+            padding: 2px 0;
+        }
+
+        .ping-placeholder { color: #525252; font-weight: bold; letter-spacing: 1px; }
+
+        .toggle-checkbox:checked { right: 0; border-color: #10b981; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #10b981; }
+        .toggle-checkbox:checked + .toggle-label:after { transform: translateX(100%); border-color: white; }
+        .toggle-label { transition: background-color 0.3s ease; }
+        .toggle-label:after { transition: transform 0.3s ease; }
+
+        .add-btn { transition: all 0.2s; }
+        .add-btn:hover { transform: scale(1.1); }
+        .add-btn:active { transform: scale(0.9); }
+
+        .modal-card { max-height: 80vh; max-height: 80dvh; }
+        .modal-list { min-height: 0; }
+
+        #toast {
+            transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
+            opacity: 0;
+            transform: translate(-50%, 20px);
+            pointer-events: none;
+        }
+        #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+        .site-item-enter { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(20px); } }
+        .site-item-exit { animation: slideOut 0.3s ease-in forwards; }
+
+        /* --- Обход --- */
+        .segmented-control {
+            background-color: #262626;
+            border-radius: 999px;
+            padding: 4px;
+            display: flex;
+            position: relative;
+        }
+        .segmented-btn {
+            flex: 1;
+            text-align: center;
+            padding: 8px 0;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            color: #a3a3a3;
+            z-index: 10;
+            cursor: pointer;
+        }
+        .segmented-btn.active {
+            background-color: #404040;
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .pulse-ring { animation: pulseBlue 2s infinite; }
+        @keyframes pulseBlue {
+            0% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.4); }
+            70% { box-shadow: 0 0 0 15px rgba(96, 165, 250, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+        }
+
+        .vpn-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .vpn-btn:active { transform: scale(0.95); }
+
+        .collapse-content {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .collapse-content.open { grid-template-rows: 1fr; }
+        .collapse-inner { overflow: hidden; }
+        .arrow-icon { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .arrow-icon.rotate-180 { transform: rotate(180deg); }
+
+        .bottom-sheet-backdrop {
+            transition: opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .bottom-sheet-backdrop.show { opacity: 1; pointer-events: auto; }
+        .bottom-sheet-content {
+            transform: translateY(100%);
+            will-change: transform;
+        }
+        .bottom-sheet-content.animate { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .bottom-sheet-content.show { transform: translateY(0); }
+        .swipe-handle-area { cursor: grab; touch-action: none; }
+        .swipe-handle-area:active { cursor: grabbing; }
+
+        .fullscreen-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background-color: #1a1a1a;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .fullscreen-overlay.show { transform: translateX(0); }
+
+        .custom-input-container { position: relative; margin-top: 8px; }
+        .custom-input {
+            width: 100%;
+            background-color: #262626;
+            border: 1px solid #404040;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 15px;
+            color: #ffffff;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .custom-input:focus { border-color: #60a5fa; }
+        .custom-input::placeholder { color: #737373; }
+
+        .loading-ring { animation: spin 2s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen justify-between select-none relative">
+
+    <!-- ЭКРАН 1: ГЛАВНЫЙ ЭКРАН (ПРОВЕРКА) -->
+    <div id="main-screen" class="flex flex-col h-full w-full absolute inset-0 z-10 bg-[#1a1a1a] overflow-y-auto pb-16">
+        <main class="flex-grow flex flex-col items-center justify-start pt-10 px-4 w-full max-w-md mx-auto">
+            <div class="flex flex-col items-center justify-center w-full">
+                <div class="relative bg-neutral-800 text-center py-3 px-6 rounded-2xl mb-4 border border-neutral-700 max-w-xs shadow-md w-full">
+                    <p class="text-sm text-neutral-400 font-medium mb-0.5">Белые списки:</p>
+                    <p id="status-text" class="text-xl font-bold text-emerald-500 tracking-wide">Выключены</p>
+                    <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full w-0 h-0 border-x-[10px] border-x-transparent border-t-[10px] border-t-neutral-800"></div>
+                </div>
+
+                <button id="toggle-button" class="status-button w-32 h-32 rounded-full border-8 border-emerald-500 bg-neutral-900 flex items-center justify-center shadow-2xl hover:bg-neutral-800 focus:outline-none mb-4">
+                    <svg id="mode-icon" class="w-16 h-16 text-emerald-500 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </button>
+
+                <div class="flex justify-center gap-3 text-xs text-neutral-400 mb-6 font-medium w-full">
+                    <div class="flex items-center gap-1.5 bg-neutral-800/80 px-3 py-1.5 rounded-lg border border-neutral-700/50">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span>Трафик: <span id="traffic-count" class="text-neutral-200">—</span></span>
+                    </div>
+                    <div class="flex items-center gap-1.5 bg-neutral-800/80 px-3 py-1.5 rounded-lg border border-neutral-700/50">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>Время: <span id="check-time" class="text-neutral-200">—</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full main-list-container rounded-xl p-4 mb-2 shadow-inner text-neutral-300 border border-neutral-700/50">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <div class="flex justify-between items-center border-b border-neutral-600 pb-1.5 mb-2 font-bold text-[12px] tracking-wide text-rose-400">
+                            <span>Белые сайты</span>
+                            <button onclick="showSection('white-list-manager')" class="add-btn text-rose-400 hover:text-white bg-rose-950/50 hover:bg-rose-800 rounded-full w-5 h-5 flex items-center justify-center -mr-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"/></svg>
+                            </button>
+                        </div>
+                        <div id="main-white-list" class="list-col space-y-1.5"></div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center border-b border-neutral-600 pb-1.5 mb-2 font-bold text-[12px] tracking-wide text-emerald-400">
+                            <span>Обычные сайты</span>
+                            <button onclick="showSection('block-list-manager')" class="add-btn text-emerald-400 hover:text-white bg-emerald-950/50 hover:bg-emerald-800 rounded-full w-5 h-5 flex items-center justify-center -mr-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 4v16m8-8H4"/></svg>
+                            </button>
+                        </div>
+                        <div id="main-block-list" class="list-col space-y-1.5"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="bg-neutral-900/95 backdrop-blur-md border-t border-neutral-800 w-full fixed bottom-0 z-40">
+            <div class="max-w-md mx-auto grid grid-cols-3 h-16">
+                <button onclick="switchTab('main')" id="nav-btn-main" class="nav-button active flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    <span>Проверка</span>
+                </button>
+                <button onclick="switchTab('bypass')" id="nav-btn-bypass" class="nav-button flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                    <span>Обход</span>
+                </button>
+                <button onclick="switchTab('settings')" id="nav-btn-settings" class="nav-button flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span>Настройки</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- ЭКРАН 2: НАСТРОЙКИ -->
+    <div id="settings-screen" class="hidden flex-col h-full w-full absolute inset-0 z-50 bg-[#1a1a1a] overflow-y-auto pb-16">
+        <div class="sticky top-0 bg-neutral-900/95 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex items-center gap-3 z-10">
+            <button onclick="switchTab('main')" class="text-neutral-400 hover:text-white p-1 -ml-1">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <h1 class="text-xl font-bold text-neutral-100">Настройки</h1>
+        </div>
+
+        <div class="p-4 max-w-md mx-auto w-full space-y-6">
+            <div class="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-lg">
+                <div class="px-4 py-3 border-b border-neutral-800 bg-neutral-800/30">
+                    <h2 class="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                        Уведомления
+                    </h2>
+                </div>
+                <div class="p-4 space-y-5">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-sm font-medium text-neutral-200">Автоматическая проверка</div>
+                            <div class="text-xs text-neutral-500 mt-0.5">Проверять статус белых списков в фоне</div>
+                        </div>
+                        <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="toggle" id="auto-check-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 border-neutral-400 appearance-none cursor-pointer z-10" checked/>
+                            <label for="auto-check-toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-neutral-600 cursor-pointer"></label>
+                        </div>
+                    </div>
+                    <div id="interval-section" class="pt-2 border-t border-neutral-800/50">
+                        <label class="block text-sm font-medium text-neutral-200 mb-2">Интервал проверки</label>
+                        <div class="relative">
+                            <select id="check-interval-select" class="w-full bg-neutral-800 border border-neutral-700 text-neutral-200 text-sm rounded-lg focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 appearance-none cursor-pointer">
+                                <option value="30">Каждые 30 секунд</option>
+                                <option value="60" selected>Каждую 1 минуту</option>
+                                <option value="300">Каждые 5 минут</option>
+                                <option value="600">Каждые 10 минут</option>
+                                <option value="1800">Каждые 30 минут</option>
+                                <option value="3600">Каждый час</option>
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-neutral-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-xs text-neutral-500">Как часто приложение будет проверять доступность сайтов.</p>
+                        <p id="interval-hint" class="mt-1 text-xs text-amber-500/80 hidden">Интервалы меньше 15 минут работают, пока приложение открыто.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Обход (VPN): сайты и приложения -->
+            <div class="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-lg">
+                <div class="px-4 py-3 border-b border-neutral-800 bg-neutral-800/30">
+                    <h2 class="text-sm font-bold text-blue-400 uppercase tracking-wider">Обход (VPN)</h2>
+                </div>
+                <div class="p-4 space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-200 mb-2">Сайты через VPN</label>
+                        <div class="flex gap-2 mb-2">
+                            <input id="bypass-site-input" type="text" placeholder="example.com" class="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm flex-1 text-white focus:outline-none focus:border-blue-500">
+                            <button onclick="bypassAddSite()" class="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-lg text-sm font-medium text-white shrink-0">Добавить</button>
+                        </div>
+                        <div id="bypass-sites-list" class="flex flex-wrap gap-2"></div>
+                        <p class="mt-2 text-xs text-neutral-500">Эти сайты пойдут через обход в режиме «только выбранные сайты».</p>
+                    </div>
+                    <div class="pt-2 border-t border-neutral-800/50">
+                        <label class="block text-sm font-medium text-neutral-200 mb-2">Приложения через VPN</label>
+                        <button onclick="openAppsPicker()" class="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-700">Выбрать приложения</button>
+                        <div id="bypass-apps-list" class="flex flex-wrap gap-2 mt-2"></div>
+                        <p class="mt-2 text-xs text-neutral-500">Если не выбрано ни одного — через обход идут все приложения.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <nav class="bg-neutral-900/95 backdrop-blur-md border-t border-neutral-800 w-full fixed bottom-0 z-40">
+            <div class="max-w-md mx-auto grid grid-cols-3 h-16">
+                <button onclick="switchTab('main')" id="nav-btn-main-set" class="nav-button flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    <span>Проверка</span>
+                </button>
+                <button onclick="switchTab('bypass')" id="nav-btn-bypass-set" class="nav-button flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                    <span>Обход</span>
+                </button>
+                <button onclick="switchTab('settings')" id="nav-btn-settings-set" class="nav-button active flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span>Настройки</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- ЭКРАН 3: ОБХОД -->
+    <div id="bypass-screen" class="hidden flex-col h-full w-full absolute inset-0 z-50 bg-[#1a1a1a] overflow-y-auto pb-16">
+        <div class="sticky top-0 bg-neutral-900/95 backdrop-blur-md border-b border-neutral-800 px-4 py-3 flex items-center gap-3 z-20 shrink-0">
+            <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shadow-sm">
+                <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3" fill="white" stroke="none" />
+                    <path d="M12 3v3" /><rect x="10.5" y="1" width="3" height="3" rx="0.5" stroke="white" />
+                    <path d="M12 18v3" /><rect x="10.5" y="20" width="3" height="3" rx="0.5" stroke="white" />
+                    <path d="M3 12h3" /><rect x="1" y="10.5" width="3" height="3" rx="0.5" stroke="white" />
+                    <path d="M18 12h3" /><rect x="20" y="10.5" width="3" height="3" rx="0.5" stroke="white" />
+                    <path d="M6.5 6.5l2 2" /><rect x="3.5" y="3.5" width="3" height="3" rx="0.5" transform="rotate(45 5 5)" stroke="white" />
+                    <path d="M15.5 15.5l2 2" /><rect x="17.5" y="17.5" width="3" height="3" rx="0.5" transform="rotate(45 19 19)" stroke="white" />
+                    <path d="M6.5 17.5l2-2" /><rect x="3.5" y="17.5" width="3" height="3" rx="0.5" transform="rotate(-45 5 19)" stroke="white" />
+                    <path d="M15.5 8.5l2-2" /><rect x="17.5" y="3.5" width="3" height="3" rx="0.5" transform="rotate(-45 19 5)" stroke="white" />
+                </svg>
+            </div>
+            <h1 class="text-xl font-bold text-neutral-100 tracking-wide">OpenFlux</h1>
+        </div>
+
+        <div class="p-4 w-full max-w-md mx-auto flex flex-col gap-5">
+            <div class="segmented-control mb-1">
+                <button id="tab-client" class="segmented-btn active" onclick="switchBypassMode('client')">Клиент</button>
+                <button id="tab-node" class="segmented-btn" onclick="switchBypassMode('node')">Выходная нода</button>
+            </div>
+
+            <!-- Клиент -->
+            <div id="client-content" class="flex flex-col gap-5 fade-in">
+                <div class="flex flex-col items-center justify-center py-2">
+                    <button id="bypass-power-btn" class="relative w-36 h-36 rounded-full border-4 border-neutral-700 bg-neutral-800 flex items-center justify-center shadow-xl transition-all duration-300 hover:bg-neutral-700 focus:outline-none">
+                        <svg id="bypass-power-icon" class="w-16 h-16 text-neutral-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9"/></svg>
+                    </button>
+                    <p id="bypass-status-text" class="mt-4 text-neutral-400 font-medium tracking-wide">Отключено</p>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <span class="text-xs text-neutral-500 uppercase tracking-wider font-semibold px-1">Подключение</span>
+                    <button onclick="openConnectionSheet()" class="w-full bg-neutral-800 border border-neutral-700 rounded-xl p-4 flex items-center justify-between hover:bg-neutral-750 transition-colors text-left group">
+                        <div class="flex flex-col">
+                            <span id="selected-connection-text" class="text-sm font-medium text-neutral-200">Не выбрано</span>
+                            <span class="text-xs text-neutral-500 mt-0.5">Нажмите, чтобы выбрать</span>
+                        </div>
+                        <svg class="w-5 h-5 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+
+                <div class="flex justify-center mt-2">
+                    <button id="vpn-mode-btn" onclick="toggleVpnMode()" class="vpn-btn bg-neutral-800 text-neutral-300 text-xs font-medium px-5 py-2.5 rounded-full border border-neutral-700 hover:bg-neutral-700 hover:text-white flex items-center gap-2">
+                        <svg class="w-4 h-4 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        <span id="vpn-mode-text" class="transition-colors duration-300">VPN: весь трафик</span>
+                    </button>
+                </div>
+
+                <div class="bg-neutral-800 rounded-2xl overflow-hidden border border-neutral-700/50 mt-1">
+                    <button onclick="toggleDetails('details')" class="w-full px-4 py-3 flex items-center justify-between text-left focus:outline-none">
+                        <span class="text-sm font-medium text-neutral-200">Сведения</span>
+                        <svg id="details-arrow" class="arrow-icon w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div id="details-wrapper" class="collapse-content">
+                        <div class="collapse-inner">
+                            <div class="px-4 pb-4 flex flex-col gap-3 border-t border-neutral-700/50 pt-3">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-neutral-400">Шифрование</span>
+                                    <span class="text-sm text-neutral-200 font-mono">AES-256-GCM</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-sm text-neutral-400">Внешний IP</span>
+                                    <div class="flex items-center gap-2">
+                                        <span id="external-ip" class="text-sm text-neutral-200 font-mono">—</span>
+                                        <button onclick="refreshIp()" class="text-neutral-400 hover:text-neutral-200 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Выходная нода -->
+            <div id="node-content" class="hidden flex-col gap-5 fade-in">
+                <p class="text-sm text-neutral-400 leading-relaxed px-1">
+                    Устройство может работать нодой: другие подключаются через него к интернету.
+                </p>
+
+                <!-- Уже добавленные подключения: раздаём без ввода настроек -->
+                <div id="node-profiles-block" class="flex flex-col gap-2">
+                    <span class="text-xs text-neutral-500 uppercase tracking-wider font-semibold px-1">Что раздавать</span>
+                    <div id="node-profile-list" class="bg-neutral-800 rounded-2xl overflow-hidden flex flex-col border border-neutral-700/50"></div>
+                    <button onclick="openNodeAddScreen()" class="text-blue-400 hover:text-blue-300 text-sm font-medium px-2 py-1 text-left transition-colors">+ Добавить ноду</button>
+                </div>
+
+                <!-- Ничего не добавлено: единственная кнопка -->
+                <button id="node-empty-add" onclick="openNodeAddScreen()" class="hidden w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Добавить ноду
+                </button>
+
+                <div class="flex flex-col items-center justify-center py-2">
+                    <button id="node-power-btn" class="relative w-36 h-36 rounded-full border-4 border-neutral-700 bg-neutral-800 flex items-center justify-center shadow-xl transition-all duration-300 hover:bg-neutral-700 focus:outline-none">
+                        <svg id="node-loading-ring" class="absolute inset-0 w-full h-full text-blue-400 loading-ring hidden" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" stroke="currentColor" stroke-width="6" fill="none" stroke-dasharray="289" stroke-dashoffset="200" stroke-linecap="round" /></svg>
+                        <svg id="node-power-icon" class="w-16 h-16 text-neutral-400 transition-colors duration-300 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9"/></svg>
+                    </button>
+                    <p id="node-status-text" class="mt-4 text-neutral-400 font-medium tracking-wide">Отключено</p>
+                </div>
+            </div>
+        </div>
+
+        <nav class="bg-neutral-900/95 backdrop-blur-md border-t border-neutral-800 w-full fixed bottom-0 z-40">
+            <div class="max-w-md mx-auto grid grid-cols-3 h-16">
+                <button onclick="switchTab('main')" id="nav-btn-main-by" class="nav-button flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    <span>Проверка</span>
+                </button>
+                <button onclick="switchTab('bypass')" id="nav-btn-bypass-by" class="nav-button active flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                    <span>Обход</span>
+                </button>
+                <button onclick="switchTab('settings')" id="nav-btn-settings-by" class="nav-button flex flex-col items-center justify-center text-xs">
+                    <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <span>Настройки</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- ЭКРАН: Добавить ноду (настройки) -->
+    <div id="node-add-screen" class="fullscreen-overlay">
+        <div class="sticky top-0 bg-[#1a1a1a] border-b border-neutral-800 px-4 py-3 flex items-center justify-between z-10 shrink-0">
+            <div class="flex items-center gap-3">
+                <button onclick="closeNodeAddScreen()" class="text-neutral-400 hover:text-white p-1 -ml-1 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 class="text-xl font-bold text-neutral-100">Новая нода</h1>
+            </div>
+            <button onclick="saveNodeAndShare()" class="text-blue-400 hover:text-blue-300 font-medium text-sm transition-colors">Сохранить</button>
+        </div>
+
+        <div class="p-4 w-full max-w-md mx-auto flex flex-col gap-5 fade-in pb-20">
+            <div class="flex flex-col gap-2">
+                <span class="text-xs text-neutral-500 uppercase tracking-wider font-semibold px-1">Название</span>
+                <div class="custom-input-container">
+                    <input id="node-name-input" type="text" placeholder="Моя нода" class="custom-input">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <span class="text-xs text-neutral-500 uppercase tracking-wider font-semibold px-1">Конференция Телемост</span>
+                <div class="custom-input-container">
+                    <input id="node-conf-input" type="text" placeholder="https://telemost.yandex.ru/j/…" class="custom-input">
+                </div>
+                <p class="text-xs text-neutral-500 px-1 leading-relaxed">Создайте конференцию на telemost.yandex.ru и вставьте ссылку. Вход в аккаунт не нужен — нода заходит гостем.</p>
+            </div>
+
+            <div class="flex flex-col gap-2">
+                <span class="text-xs text-neutral-500 uppercase tracking-wider font-semibold px-1">Ключ шифрования</span>
+                <div class="custom-input-container relative">
+                    <input id="node-secret-input" type="text" placeholder="Ключ шифрования" class="custom-input pr-28">
+                    <button onclick="generateNodeSecret()" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-blue-300 text-sm font-medium">Сгенерировать</button>
+                </div>
+                <p class="text-xs text-neutral-500 px-1 leading-relaxed">Задайте тот же ключ на подключающихся устройствах (не короче 16 символов).</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ЭКРАН: НОДА РАБОТАЕТ -->
+    <div id="node-active-screen" class="fullscreen-overlay z-[150]">
+        <div class="sticky top-0 bg-[#1a1a1a] border-b border-neutral-800 px-4 py-3 flex items-center justify-between z-10 shrink-0">
+            <div class="flex items-center gap-3">
+                <button onclick="stopNodeAndClose()" class="text-neutral-400 hover:text-white p-1 -ml-1 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 class="text-xl font-bold text-neutral-100">Нода</h1>
+            </div>
+        </div>
+
+        <div class="p-4 w-full max-w-md mx-auto flex flex-col items-center gap-6 fade-in mt-4">
+            <div class="w-28 h-28 rounded-full bg-neutral-800 border-4 border-blue-400 flex items-center justify-center shadow-[0_0_30px_rgba(96,165,250,0.2)] pulse-ring">
+                <svg class="w-14 h-14 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9"/></svg>
+            </div>
+
+            <div class="w-full bg-[#262626] border border-neutral-700 rounded-2xl p-4 flex items-center gap-3">
+                <div id="node-active-dot" class="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                <div class="flex flex-col">
+                    <span id="node-active-status" class="text-sm font-medium text-neutral-200">Нода работает</span>
+                    <span class="text-xs text-neutral-500 mt-0.5">Отсканируйте QR-код другим устройством</span>
+                </div>
+            </div>
+
+            <div class="w-full bg-white rounded-2xl p-3 flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+                <img id="node-qr" alt="QR-код" class="w-full max-w-[320px] aspect-square object-contain" style="image-rendering: pixelated;">
+            </div>
+
+            <div class="w-full flex flex-col gap-3 mt-2">
+                <button onclick="shareNodeLink()" class="w-full bg-blue-500 hover:bg-blue-400 active:scale-[0.98] text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                    Поделиться ссылкой
+                </button>
+                <button onclick="copyNodeLink()" class="w-full bg-transparent border border-neutral-600 hover:border-neutral-400 text-neutral-300 hover:text-white font-medium py-3.5 rounded-xl flex items-center justify-center transition-colors">
+                    Копировать ссылку
+                </button>
+            </div>
+
+            <p class="text-xs text-neutral-500 leading-relaxed mt-2">
+                По этой ссылке подключится любой. Одновременно работает одно устройство — второе вытеснит первое.
+            </p>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО 1: Выбор подключения -->
+    <div id="connection-sheet-backdrop" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] bottom-sheet-backdrop flex flex-col justify-end">
+        <div id="connection-sheet" class="bg-[#212121] w-full max-w-md mx-auto rounded-t-3xl bottom-sheet-content flex flex-col max-h-[85vh] shadow-2xl">
+            <div id="drag-handle" class="swipe-handle-area w-full">
+                <div class="w-full flex justify-center pt-3 pb-2">
+                    <div class="w-10 h-1.5 bg-neutral-600 rounded-full"></div>
+                </div>
+                <div class="px-5 pt-2 pb-4">
+                    <h2 class="text-xl font-bold text-white">Выбрать подключение</h2>
+                </div>
+            </div>
+            <div class="flex-grow overflow-y-auto px-5 mb-4">
+                <div id="connection-list" class="flex flex-col gap-1"></div>
+            </div>
+            <div class="px-5 pb-6 pt-2 border-t border-neutral-800/50">
+                <button onclick="openAddMenu()" class="w-full bg-transparent border border-neutral-600 hover:border-neutral-400 text-neutral-300 hover:text-white font-medium py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО 2: Добавление подключения (только QR) -->
+    <div id="add-sheet-backdrop" class="fixed inset-0 bg-black/60 z-[110] bottom-sheet-backdrop flex flex-col justify-end">
+        <div id="add-sheet" class="bg-[#212121] w-full max-w-md mx-auto rounded-t-3xl bottom-sheet-content flex flex-col shadow-2xl">
+            <div id="add-drag-handle" class="swipe-handle-area w-full">
+                <div class="w-full flex justify-center pt-3 pb-2">
+                    <div class="w-10 h-1.5 bg-neutral-600 rounded-full"></div>
+                </div>
+                <div class="px-5 pt-2 pb-2">
+                    <h2 class="text-xl font-bold text-white">Добавить</h2>
+                </div>
+            </div>
+            <div class="flex flex-col px-2 pb-6 mt-2">
+                <button onclick="scanBypassQr()" class="flex items-center gap-4 px-4 py-3.5 hover:bg-neutral-800 rounded-xl transition-colors text-left text-neutral-200">
+                    <svg class="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                    <span class="text-sm font-medium">Сканировать QR</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНЫЕ ОКНА ДЛЯ УПРАВЛЕНИЯ САЙТАМИ -->
+    <div id="white-list-manager" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+        <div class="modal-card bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-sm p-6 flex flex-col" style="max-height:80vh;display:flex;flex-direction:column;">
+            <h3 class="text-lg font-bold text-rose-400 mb-4 flex justify-between items-center">
+                <span>Белые сайты</span>
+                <button onclick="closeSection('white-list-manager')" class="text-neutral-400 hover:text-white text-2xl leading-none">&times;</button>
+            </h3>
+            <div class="flex gap-2 mb-4">
+                <input id="new-white-site" type="text" placeholder="example.com" class="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm flex-grow focus:outline-none focus:border-rose-500 text-white">
+                <button onclick="addSite('white')" class="bg-rose-600 hover:bg-rose-500 px-4 py-2 rounded-lg text-sm font-medium text-white">Добавить</button>
+            </div>
+            <div id="white-sites-container" class="modal-list overflow-y-auto flex-grow space-y-2 text-sm pr-1 relative" style="max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+        </div>
+    </div>
+
+    <div id="block-list-manager" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+        <div class="modal-card bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-sm p-6 flex flex-col" style="max-height:80vh;display:flex;flex-direction:column;">
+            <h3 class="text-lg font-bold text-emerald-400 mb-4 flex justify-between items-center">
+                <span>Обычные сайты</span>
+                <button onclick="closeSection('block-list-manager')" class="text-neutral-400 hover:text-white text-2xl leading-none">&times;</button>
+            </h3>
+            <div class="flex gap-2 mb-4">
+                <input id="new-block-site" type="text" placeholder="restricted-game.com" class="bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-sm flex-grow focus:outline-none focus:border-emerald-500 text-white">
+                <button onclick="addSite('block')" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-medium text-white">Добавить</button>
+            </div>
+            <div id="block-sites-container" class="modal-list overflow-y-auto flex-grow space-y-2 text-sm pr-1 relative" style="max-height:50vh;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО: Выбор приложений для VPN -->
+    <div id="apps-picker-backdrop" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[120] bottom-sheet-backdrop flex flex-col justify-end">
+        <div id="apps-picker" class="bg-[#212121] w-full max-w-md mx-auto rounded-t-3xl bottom-sheet-content flex flex-col max-h-[85vh] shadow-2xl">
+            <div class="w-full flex justify-center pt-3 pb-2">
+                <div class="w-10 h-1.5 bg-neutral-600 rounded-full"></div>
+            </div>
+            <div class="px-5 pt-2 pb-3 flex items-center justify-between">
+                <h2 class="text-xl font-bold text-white">Приложения</h2>
+                <button onclick="closeAppsPicker()" class="text-blue-400 font-medium text-sm">Готово</button>
+            </div>
+            <div class="flex-grow overflow-y-auto px-5 pb-6" id="apps-picker-list"></div>
+        </div>
+    </div>
+
+    <!-- МОДАЛЬНОЕ ОКНО: включён VPN -->
+    <div id="vpn-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4">
+        <div class="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-sm p-6 flex flex-col shadow-2xl">
+            <h3 class="text-lg font-bold text-amber-400 mb-3 flex items-center gap-2">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <span id="vpn-modal-title">Включён VPN</span>
+            </h3>
+
+            <p class="text-sm text-neutral-300 leading-relaxed mb-3">
+                Пока включен наш обход OpenFlux, проверить, сработал ли он и исчезли ли белые списки,
+                <span class="text-neutral-100 font-medium">этим приложением нельзя</span>:
+                тестер соврёт, что белые списки включены, хотя на самом деле обход работает.
+            </p>
+            <p class="text-sm text-neutral-400 leading-relaxed mb-5">
+                Проверить по-настоящему можно только в другом месте — например, на другом
+                устройстве без VPN или после отключения обхода.
+            </p>
+
+            <button onclick="forceCheckWithVpn()" class="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white font-medium text-sm py-3 px-4 rounded-xl transition-all mb-2 leading-snug">
+                Я хочу протестировать сторонний VPN с обходом Белых списков
+            </button>
+            <button onclick="hideVpnModal()" class="w-full bg-transparent border border-neutral-700 hover:border-neutral-500 text-neutral-300 font-medium py-2.5 rounded-xl transition-colors">
+                Понятно
+            </button>
+        </div>
+    </div>
+
+    <!-- Тост -->
+    <div id="toast" class="fixed bottom-24 left-1/2 bg-neutral-800 border border-neutral-700 text-white px-4 py-2 rounded-xl text-xs shadow-xl z-[300] whitespace-nowrap">
+        Сайт добавлен
+    </div>
+
+    <script src="app.js"></script>
+    <script src="bypass.js"></script>
+</body>
+</html>
