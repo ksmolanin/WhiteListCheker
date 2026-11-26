@@ -1,0 +1,8 @@
+<resources>
+    <!-- Светлая тема: боковая панель настроек белая, поэтому системные
+         виджеты (Spinner, RadioButton, Button) должны быть тёмными.
+         DayNight здесь ломал читаемость панели в системной тёмной теме. -->
+    <style name="Theme.WhitelistChecker" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">#3C3C3C</item>
+    </style>
+</resources>
